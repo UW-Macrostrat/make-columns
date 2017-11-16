@@ -5,5 +5,6 @@ module.exports = {
   boundary_group: '',
   clip_sql: '',
   // At least one col_id must be specified here
-  col_ids: [462, 463, 456]
+  col_ids: [462, 463, 456],
+  col_group_ids: []
 }
