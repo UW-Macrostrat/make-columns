@@ -30,6 +30,7 @@ mariaPool.getConnection((error, connection) => {
   if (error) {
     throw new Error('Unable to connect to MySQL. Please check your credentials')
   }
+  process()
 })
 
 function queryPg(query, params, callback) {
@@ -44,145 +45,147 @@ function queryPg(query, params, callback) {
   })
 }
 
-// Start the process
-async.waterfall([
-  // Get columns
-  (callback) => {
-    let sql = ''
-    let params = []
-    if (config.col_ids.length) {
-      sql = `
-        SELECT id, lat, lng
-        FROM cols
-        WHERE id IN (?)
-      `
-      params = config.col_ids
-    } else if (config.col_group_ids.length) {
-      sql = `
-        SELECT id, lat, lng
-        FROM cols
-        WHERE col_group_id IN (?)
-      `
-      params = config.col_group_ids
-    } else {
-      console.log('Please specify a col_id or col_group_id')
-      process.exit(1)
-    }
-    mariaPool.query(sql, params, (error, result) => {
-      if (error) {
-        console.log(error)
-        process.exit(1)
-      }
-      callback(null, result)
-    })
-  },
-  // Get clip polygon
-  (columns, callback) => {
-    let sql = ''
-    let params = []
-
-    if (config.clip_sql) {
-      sql = config.clip_sql
-    } else {
-      sql = `
-        SELECT ST_AsGeoJSON((ST_dump(ST_Union(geom))).geom) AS geom
-        FROM geologic_boundaries.boundaries
-        WHERE
-      `
-      if (config.boundary_id) {
-        sql += ' boundary_id = $1'
-        params.push(config.boundary_id)
-      } else if (config.boundary_name) {
-        sql += ' name = $1'
-        params.push(config.boundary_name)
-      } else if (config.boundary_group) {
-        sql += ' boundary_group = $1'
-        params.push(config.boundary_group)
+function process() {
+  // Start the process
+  async.waterfall([
+    // Get columns
+    (callback) => {
+      let sql = ''
+      let params = []
+      if (config.col_ids.length) {
+        sql = `
+          SELECT id, lat, lng
+          FROM cols
+          WHERE id IN (?)
+        `
+        params = config.col_ids
+      } else if (config.col_group_ids.length) {
+        sql = `
+          SELECT id, lat, lng
+          FROM cols
+          WHERE col_group_id IN (?)
+        `
+        params = config.col_group_ids
       } else {
-        console.log('No valid parameters provided')
+        console.log('Please specify a col_id or col_group_id')
         process.exit(1)
       }
-    }
-    queryPg(sql, params, (error, result) => {
-      if (error) {
-        console.log(error)
-        process.exit(1)
-      }
-      if (!result.length) {
-        console.log('No clip polygons were returned')
-        process.exit(1)
-      }
-      callback(null, columns, JSON.parse(result[0].geom))
-    })
-  },
-
-  // Create tesselation
-  (columns, clipPolygon, callback) => {
-    let clipBBox = bbox(clipPolygon)
-
-    // Assemble the column centroids into a valid GeoJSON FeatureCollection
-    let columnGeojson = {
-      "type": "FeatureCollection",
-      "features": columns.map(col => {
-        return {
-          "type": "Feature",
-          "geometry": {
-            "type": "Point",
-            "coordinates": [ col.lng, col.lat ]
-          },
-          "properties": {
-            "id": col.id
-          }
-        }
-      })
-    }
-
-    // Create the tesselation
-    // NB: Turf voronoi can only clip by a bbox, not a polygon
-    let tesselation = voronoi(columnGeojson, { bbox: clipBBox })
-
-    // Clip the tesselated polygons to the original clip polygon
-    tesselation.features = tesselation.features.map(f => {
-      let newFeature = intersect(f, clipPolygon)
-
-      // Identify which point a given tesselated polygon contains
-      let points = pip(columnGeojson, { "type": "FeatureCollection", "features": [ newFeature ] })
-      if (!points.features.length || points.features.length > 1) {
-        console.log('Something went very wrong')
-        process.exit(1)
-      }
-      // Assign a column id to the tesselated polygon
-      newFeature.properties['id'] = points.features[0].properties.id
-      return newFeature
-    })
-
-    // Insert the new polygons into MariaDB
-    async.eachLimit(tesselation.features, 1, (feature, done) => {
-      mariaPool.query(`
-        UPDATE col_areas
-        SET col_area = ST_GeomFromText(?)
-        WHERE col_id = ?
-      `, [ wkt(f.geometry), f.properties.id ], (error) => {
+      mariaPool.query(sql, params, (error, result) => {
         if (error) {
           console.log(error)
+          process.exit(1)
         }
+        callback(null, result)
+      })
+    },
+    // Get clip polygon
+    (columns, callback) => {
+      let sql = ''
+      let params = []
 
+      if (config.clip_sql) {
+        sql = config.clip_sql
+      } else {
+        sql = `
+          SELECT ST_AsGeoJSON((ST_dump(ST_Union(geom))).geom) AS geom
+          FROM geologic_boundaries.boundaries
+          WHERE
+        `
+        if (config.boundary_id) {
+          sql += ' boundary_id = $1'
+          params.push(config.boundary_id)
+        } else if (config.boundary_name) {
+          sql += ' name = $1'
+          params.push(config.boundary_name)
+        } else if (config.boundary_group) {
+          sql += ' boundary_group = $1'
+          params.push(config.boundary_group)
+        } else {
+          console.log('No valid parameters provided')
+          process.exit(1)
+        }
+      }
+      queryPg(sql, params, (error, result) => {
+        if (error) {
+          console.log(error)
+          process.exit(1)
+        }
+        if (!result.length) {
+          console.log('No clip polygons were returned')
+          process.exit(1)
+        }
+        callback(null, columns, JSON.parse(result[0].geom))
+      })
+    },
+
+    // Create tesselation
+    (columns, clipPolygon, callback) => {
+      let clipBBox = bbox(clipPolygon)
+
+      // Assemble the column centroids into a valid GeoJSON FeatureCollection
+      let columnGeojson = {
+        "type": "FeatureCollection",
+        "features": columns.map(col => {
+          return {
+            "type": "Feature",
+            "geometry": {
+              "type": "Point",
+              "coordinates": [ col.lng, col.lat ]
+            },
+            "properties": {
+              "id": col.id
+            }
+          }
+        })
+      }
+
+      // Create the tesselation
+      // NB: Turf voronoi can only clip by a bbox, not a polygon
+      let tesselation = voronoi(columnGeojson, { bbox: clipBBox })
+
+      // Clip the tesselated polygons to the original clip polygon
+      tesselation.features = tesselation.features.map(f => {
+        let newFeature = intersect(f, clipPolygon)
+
+        // Identify which point a given tesselated polygon contains
+        let points = pip(columnGeojson, { "type": "FeatureCollection", "features": [ newFeature ] })
+        if (!points.features.length || points.features.length > 1) {
+          console.log('Something went very wrong')
+          process.exit(1)
+        }
+        // Assign a column id to the tesselated polygon
+        newFeature.properties['id'] = points.features[0].properties.id
+        return newFeature
+      })
+
+      // Insert the new polygons into MariaDB
+      async.eachLimit(tesselation.features, 1, (feature, done) => {
         mariaPool.query(`
-          UPDATE cols
-          SET col_area = ?
-          WHERE id = ?
-        `, [ area(f.geometry), f.properties.id ], (error) => {
+          UPDATE col_areas
+          SET col_area = ST_GeomFromText(?)
+          WHERE col_id = ?
+        `, [ wkt(f.geometry), f.properties.id ], (error) => {
           if (error) {
             console.log(error)
           }
-          done()
+
+          mariaPool.query(`
+            UPDATE cols
+            SET col_area = ?
+            WHERE id = ?
+          `, [ area(f.geometry), f.properties.id ], (error) => {
+            if (error) {
+              console.log(error)
+            }
+            done()
+          })
+
+        }, (error) => {
+          console.log('Done')
+          process.exit(0)
         })
-
-      }, (error) => {
-        console.log('Done')
-        process.exit(0)
       })
-    })
 
-  }
-])
+    }
+  ])
+}
