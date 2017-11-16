@@ -235,7 +235,7 @@ function doWork() {
             if (!shouldInsert) return d(null, shouldInsert)
             queryPg(`
               INSERT INTO macrostrat.col_areas (id, col_id, col_area, wkt)
-              VALUES ((SELECT max(id) +1 FROM macrostrat.col_areas ), $1, ST_SetSRID(ST_GeomFromText($2), 4326), $2)
+              VALUES ((SELECT max(id) +1 FROM macrostrat.col_areas ), $1, ST_GeomFromText($2), $2)
             `, [
               f.properties.id, wkt(f.geometry)
             ], (error) => {
@@ -253,7 +253,7 @@ function doWork() {
 
             queryPg(`
               UPDATE macrostrat.col_areas
-              SET col_area = ST_SetSRID(ST_GeomFromText($1), 4326)
+              SET col_area = ST_GeomFromText($1)
               WHERE col_id = $2
             `, [ wkt(f.geometry), f.properties.id ], (error) => {
               if (error) {
