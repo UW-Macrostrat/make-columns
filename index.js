@@ -23,12 +23,7 @@ pgPool.on('error', (err, client) => {
   process.exit(-1)
 })
 
-const mariaPool = mysql.createPool({
-  host: credentials.mariadb.host,
-  user: credentials.mariadb.user,
-  password: credentials.mariadb.password,
-  database: 'macrostrat'
-})
+const mariaPool = mysql.createPool(credentials.mariadb)
 
 // Verify a connection has been made
 mariaPool.getConnection((error, connection) => {
