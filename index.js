@@ -202,6 +202,36 @@ function doWork() {
           },
 
           (shouldInsert, d) => {
+            if (shouldInsert) return d(null, shouldInsert)
+
+            mariaPool.query(`
+              UPDATE col_areas
+              SET col_area = ST_GeomFromText(?)
+              WHERE col_id = ?
+            `, [ wkt(f.geometry), f.properties.id ], (error) => {
+              if (error) {
+                console.log(error)
+              }
+              d(null, shouldInsert)
+            })
+          },
+
+          (d) => {
+            // Check if this is in col_areas already
+            queryPg(`
+              SELECT col_id
+              FROM macrostrat.col_areas
+              WHERE col_id = ?
+            `, [ f.properties.id ], (error, result) => {
+              if (error) {
+                console.log(error)
+                process.exit(1)
+              }
+              d(null, (result.length) ? false : true)
+            })
+          },
+
+          (shouldInsert, d) => {
             if (!shouldInsert) return d(null, shouldInsert)
             queryPg(`
               INSERT INTO macrostrat.col_areas (id, col_id, col_area, wkt)
@@ -214,21 +244,6 @@ function doWork() {
                 process.exit(1)
               }
 
-              d(null, shouldInsert)
-            })
-          },
-
-          (shouldInsert, d) => {
-            if (shouldInsert) return d(null, shouldInsert)
-
-            mariaPool.query(`
-              UPDATE col_areas
-              SET col_area = ST_GeomFromText(?)
-              WHERE col_id = ?
-            `, [ wkt(f.geometry), f.properties.id ], (error) => {
-              if (error) {
-                console.log(error)
-              }
               d(null, shouldInsert)
             })
           },
