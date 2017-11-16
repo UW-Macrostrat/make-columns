@@ -219,7 +219,7 @@ function doWork() {
           },
 
           (shouldInsert, d) => {
-            if (shouldInsert) return d(null)
+            if (shouldInsert) return d(null, shouldInsert)
 
             mariaPool.query(`
               UPDATE col_areas
@@ -229,7 +229,7 @@ function doWork() {
               if (error) {
                 console.log(error)
               }
-              d(null)
+              d(null, shouldInsert)
             })
           },
 
