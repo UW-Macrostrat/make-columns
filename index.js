@@ -221,7 +221,7 @@ function doWork() {
             queryPg(`
               SELECT col_id
               FROM macrostrat.col_areas
-              WHERE col_id = ?
+              WHERE col_id = $1
             `, [ f.properties.id ], (error, result) => {
               if (error) {
                 console.log(error)
