@@ -10,6 +10,7 @@
   "license": "ISC",
   "dependencies": {
     "@turf/area": "^5.0.4",
+    "@turf/bbox": "^5.0.4",
     "@turf/intersect": "^5.0.4",
     "@turf/points-within-polygon": "^5.0.4",
     "@turf/voronoi": "^5.0.4",
