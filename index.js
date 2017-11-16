@@ -171,7 +171,7 @@ function doWork() {
       // Insert the new polygons into MariaDB
     //  console.log(JSON.stringify(tesselation))
       async.eachLimit(tesselation.features, 1, (f, done) => {
-        async.series([
+        async.waterfall([
           (d) => {
             // Check if this is in col_areas already
             mariaPool.query(`
