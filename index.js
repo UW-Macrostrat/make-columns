@@ -202,12 +202,57 @@ function doWork() {
           },
 
           (shouldInsert, d) => {
+            if (!shouldInsert) return d(null, shouldInsert)
+            queryPg(`
+              INSERT INTO macrostrat.col_areas (id, col_id, col_area, wkt)
+              VALUES (max(id) + 1, $1, ST_SetSRID(ST_GeomFromText($2), 4326), $2)
+            `, [
+              f.properties.id, wkt(f.geometry)
+            ], (error) => {
+              if (error) {
+                console.log(error)
+                process.exit(1)
+              }
+
+              d(null, shouldInsert)
+            })
+          },
+
+          (shouldInsert, d) => {
             if (shouldInsert) return d(null)
 
             mariaPool.query(`
               UPDATE col_areas
               SET col_area = ST_GeomFromText(?)
               WHERE col_id = ?
+            `, [ wkt(f.geometry), f.properties.id ], (error) => {
+              if (error) {
+                console.log(error)
+              }
+              d(null)
+            })
+          },
+
+          (shouldInsert, d) => {
+            if (shouldInsert) return d(null)
+
+            queryPg(`
+              UPDATE macrostrat.col_areas
+              SET col_area = ST_SetSRID(ST_GeomFromText($1), 4326)
+              WHERE col_id = $2
+            `, [ wkt(f.geometry), f.properties.id ], (error) => {
+              if (error) {
+                console.log(error)
+              }
+              d(null)
+            })
+          },
+
+          (d) => {
+            queryPg(`
+              UPDATE macrostrat.cols
+              SET poly_geom = ST_SetSRID(ST_GeomFromText($1), 4326)
+              WHERE id = $2
             `, [ wkt(f.geometry), f.properties.id ], (error) => {
               if (error) {
                 console.log(error)
