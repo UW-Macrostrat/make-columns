@@ -142,9 +142,10 @@ function doWork() {
 
       // Validate that all columns are in the clipPolygon!
       let pointsInside = pip(columnGeojson, { "type": "FeatureCollection", "features": [ clipPolygon ] })
-      console.log(JSON.stringify(pointsInside))
-      if (pointsInside.features.length != columnGeojson.features.length) {
-        console.log('Some column points are outside the clip area. Aborting.')
+      if (pointsInside.features.length != columns.length) {
+        let inside = pointsInside.features.map(d => { return d.properties.id })
+        let notFound = columns.filter(d => { if (inside.indexOf(d.id) === -1) return d})
+        console.log('Some column points are outside the clip area - ', notFound.map(d => { return d.id }))
         process.exit(1)
       }
 
@@ -170,28 +171,66 @@ function doWork() {
       // Insert the new polygons into MariaDB
     //  console.log(JSON.stringify(tesselation))
       async.eachLimit(tesselation.features, 1, (f, done) => {
-        mariaPool.query(`
-          UPDATE col_areas
-          SET col_area = ST_GeomFromText(?)
-          WHERE col_id = ?
-        `, [ wkt(f.geometry), f.properties.id ], (error) => {
-          if (error) {
-            console.log(error)
+        async.series([
+          (d) => {
+            // Check if this is in col_areas already
+            mariaPool.query(`
+              SELECT col_id
+              FROM col_areas
+              WHERE col_id = ?
+            `, [ f.properties.id ], (error, result) => {
+              if (error) {
+                console.log(error)
+                process.exit(1)
+              }
+              d(null, (result.length) ? false : true)
+            })
+          },
+
+          (shouldInsert, d) => {
+            if (!shouldInsert) return d(null, shouldInsert)
+            mariaPool.query(`
+              INSERT INTO col_areas (col_id, col_area)
+              VALUES (?, ST_GeomFromText(?))
+            `, [ f.properties.id, wkt(f.geometry) ], (error) => {
+              if (error) {
+                console.log(error)
+                process.exit(1)
+              }
+              d(null, shouldInsert)
+            })
+          },
+
+          (shouldInsert, d) => {
+            if (shouldInsert) return d(null)
+
+            mariaPool.query(`
+              UPDATE col_areas
+              SET col_area = ST_GeomFromText(?)
+              WHERE col_id = ?
+            `, [ wkt(f.geometry), f.properties.id ], (error) => {
+              if (error) {
+                console.log(error)
+              }
+              d(null)
+            })
+          },
+
+          (d) => {
+            mariaPool.query(`
+              UPDATE cols
+              SET col_area = ?
+              WHERE id = ?
+            `, [ area(f.geometry), f.properties.id ], (error) => {
+              if (error) {
+                console.log(error)
+              }
+              d()
+            })
           }
 
-          mariaPool.query(`
-            UPDATE cols
-            SET col_area = ?
-            WHERE id = ?
-          `, [ area(f.geometry), f.properties.id ], (error) => {
-            if (error) {
-              console.log(error)
-            }
-            done()
-          })
-
-        }, (error) => {
-          process.exit(0)
+        ], (error) => {
+          done()
         })
       }, (error) => {
         process.exit(0)
