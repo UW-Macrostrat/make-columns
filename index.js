@@ -266,7 +266,7 @@ function doWork() {
           (d) => {
             queryPg(`
               UPDATE macrostrat.cols
-              SET poly_geom = ST_SetSRID(ST_GeomFromText($1), 4326)
+              SET poly_geom = ST_GeomFromText($1)
               WHERE id = $2
             `, [ wkt(f.geometry), f.properties.id ], (error) => {
               if (error) {
