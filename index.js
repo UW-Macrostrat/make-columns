@@ -58,18 +58,19 @@ function doWork() {
           FROM cols
           WHERE id IN (?)
         `
-        params = config.col_ids
+        params = [ config.col_ids ]
       } else if (config.col_group_ids.length) {
         sql = `
           SELECT id, lat, lng
           FROM cols
           WHERE col_group_id IN (?)
         `
-        params = config.col_group_ids
+        params = [ config.col_group_ids ]
       } else {
         console.log('Please specify a col_id or col_group_id')
         process.exit(1)
       }
+
       mariaPool.query(sql, params, (error, result) => {
         if (error) {
           console.log(error)
@@ -139,6 +140,14 @@ function doWork() {
         })
       }
 
+      // Validate that all columns are in the clipPolygon!
+      let pointsInside = pip(columnGeojson, { "type": "FeatureCollection", "features": [ clipPolygon ] })
+      console.log(JSON.stringify(pointsInside))
+      if (pointsInside.features.length != columnGeojson.features.length) {
+        console.log('Some column points are outside the clip area. Aborting.')
+        process.exit(1)
+      }
+
       // Create the tesselation
       // NB: Turf voronoi can only clip by a bbox, not a polygon
       let tesselation = voronoi(columnGeojson, { bbox: clipBBox })
@@ -159,7 +168,8 @@ function doWork() {
       })
 
       // Insert the new polygons into MariaDB
-      async.eachLimit(tesselation.features, 1, (feature, done) => {
+    //  console.log(JSON.stringify(tesselation))
+      async.eachLimit(tesselation.features, 1, (f, done) => {
         mariaPool.query(`
           UPDATE col_areas
           SET col_area = ST_GeomFromText(?)
@@ -167,7 +177,6 @@ function doWork() {
         `, [ wkt(f.geometry), f.properties.id ], (error) => {
           if (error) {
             console.log(error)
-
           }
 
           mariaPool.query(`
@@ -182,9 +191,10 @@ function doWork() {
           })
 
         }, (error) => {
-          console.log('Done')
           process.exit(0)
         })
+      }, (error) => {
+        process.exit(0)
       })
 
     }
