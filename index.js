@@ -30,7 +30,7 @@ mariaPool.getConnection((error, connection) => {
   if (error) {
     throw new Error('Unable to connect to MySQL. Please check your credentials')
   }
-  process()
+  doWork()
 })
 
 function queryPg(query, params, callback) {
@@ -45,7 +45,7 @@ function queryPg(query, params, callback) {
   })
 }
 
-function process() {
+function doWork() {
   // Start the process
   async.waterfall([
     // Get columns
@@ -167,6 +167,7 @@ function process() {
         `, [ wkt(f.geometry), f.properties.id ], (error) => {
           if (error) {
             console.log(error)
+
           }
 
           mariaPool.query(`
