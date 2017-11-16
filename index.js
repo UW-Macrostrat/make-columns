@@ -22,7 +22,6 @@ pgPool.on('error', (err, client) => {
   process.exit(-1)
 })
 
-
 const mariaPool = mysql.createPool({
   host: credentials.mariadb.host,
   user: credentials.mariadb.user,
@@ -49,6 +48,7 @@ function queryPg(query, params, callback) {
   })
 }
 
+// Start the process
 async.waterfall([
   // Get columns
   (callback) => {
@@ -126,25 +126,25 @@ async.waterfall([
     }
 
     // Create the tesselation
+    // NB: Turf voronoi can only clip by a bbox, not a polygon
     let tesselation = voronoi(columnGeojson, { bbox: clipBBox })
 
     // Clip the tesselated polygons to the original clip polygon
     tesselation.features = tesselation.features.map(f => {
       let newFeature = intersect(f, clipPolygon)
 
+      // Identify which point a given tesselated polygon contains
       let points = pip(columnGeojson, { "type": "FeatureCollection", "features": [ newFeature ] })
       if (!points.features.length || points.features.length > 1) {
         console.log('Something went very wrong')
         process.exit(1)
       }
+      // Assign a column id to the tesselated polygon
       newFeature.properties['id'] = points.features[0].properties.id
       return newFeature
     })
 
-    tesselation.features.forEach(f => {
-      console.log(wkt(f.geometry))
-    })
-  //  console.log(JSON.stringify(tesselation))
+    // Insert the new polygons into MariaDB
     async.eachLimit(tesselation.features, 1, (feature, done) => {
       mariaPool.query(`
         UPDATE col_areas
