@@ -216,7 +216,7 @@ function doWork() {
             })
           },
 
-          (d) => {
+          (shouldInsert, d) => {
             // Check if this is in col_areas already
             queryPg(`
               SELECT col_id
