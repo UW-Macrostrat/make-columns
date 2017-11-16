@@ -5,6 +5,7 @@ const bbox = require('@turf/bbox')
 const voronoi = require('@turf/voronoi')
 const intersect = require('@turf/intersect')
 const pip = require('@turf/points-within-polygon')
+const area = require('@turf/area')
 const wkt = require('wellknown').stringify
 const credentials = require('./credentials')
 const config = require('./config')
@@ -170,7 +171,18 @@ async.waterfall([
         if (error) {
           console.log(error)
         }
-        done()
+
+        mariaPool.query(`
+          UPDATE cols
+          SET col_area = ?
+          WHERE id = ?
+        `, [ area(f.geometry), f.properties.id ], (error) => {
+          if (error) {
+            console.log(error)
+          }
+          done()
+        })
+
       }, (error) => {
         console.log('Done')
         process.exit(0)
