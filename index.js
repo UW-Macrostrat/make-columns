@@ -52,11 +52,27 @@ function queryPg(query, params, callback) {
 async.waterfall([
   // Get columns
   (callback) => {
-    mariaPool.query(`
-      SELECT id, lat, lng
-      FROM cols
-      WHERE id IN (?)
-    `, [ config.col_ids ], (error, result) => {
+    let sql = ''
+    let params = []
+    if (config.col_ids.length) {
+      sql = `
+        SELECT id, lat, lng
+        FROM cols
+        WHERE id IN (?)
+      `
+      params = config.col_ids
+    } else if (config.col_group_ids.length) {
+      sql = `
+        SELECT id, lat, lng
+        FROM cols
+        WHERE col_group_id IN (?)
+      `
+      params = config.col_group_ids
+    } else {
+      console.log('Please specify a col_id or col_group_id')
+      process.exit(1)
+    }
+    mariaPool.query(sql, params, (error, result) => {
       if (error) {
         console.log(error)
         process.exit(1)
